@@ -33,46 +33,71 @@ jobs:
           }
 
           Write-Host "wsl.exe found at: $($wsl.Source)"
-          wsl.exe --status
 
-      - name: List current WSL distros
+      - name: Probe current WSL state
         run: |
-          Write-Host "Current WSL distros (if any):"
-          wsl.exe --list --verbose
+          Write-Host "WSL status:"
+          & wsl.exe --status
+          $statusExit = $LASTEXITCODE
+          Write-Host "wsl --status exit code: $statusExit"
+
+          Write-Host ""
+          Write-Host "Current WSL distros (non-fatal if none exist yet):"
+          & wsl.exe --list --verbose
+          $listExit = $LASTEXITCODE
+          Write-Host "wsl --list --verbose exit code: $listExit"
 
       - name: Install Ubuntu if missing
         run: |
-          $distros = @(
-            wsl.exe --list --quiet 2>$null |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_ }
-          )
+          $distrosOutput = & wsl.exe --list --quiet 2>&1
+          $listExit = $LASTEXITCODE
+
+          $distros = @()
+          if ($listExit -eq 0) {
+            $distros = @(
+              $distrosOutput |
+              ForEach-Object { "$_".Trim() } |
+              Where-Object { $_ }
+            )
+          }
 
           if ($distros -contains "Ubuntu") {
             Write-Host "Ubuntu already installed."
           }
           else {
-            Write-Host "Ubuntu not found. Attempting install..."
-            wsl.exe --install -d Ubuntu
+            Write-Host "Ubuntu not found. Listing online distros..."
+            & wsl.exe --list --online
+
+            Write-Host "Installing Ubuntu..."
+            & wsl.exe --install Ubuntu
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to install Ubuntu with wsl.exe --install Ubuntu"
+            }
           }
 
       - name: Wait for Ubuntu registration
         run: |
-          $maxAttempts = 24
-          $sleepSeconds = 5
+          $maxAttempts = 30
+          $sleepSeconds = 10
           $found = $false
 
           for ($i = 1; $i -le $maxAttempts; $i++) {
-            $distros = @(
-              wsl.exe --list --quiet 2>$null |
-              ForEach-Object { $_.Trim() } |
-              Where-Object { $_ }
-            )
+            $distrosOutput = & wsl.exe --list --quiet 2>&1
+            $listExit = $LASTEXITCODE
 
-            if ($distros -contains "Ubuntu") {
-              $found = $true
-              Write-Host "Ubuntu registered."
-              break
+            if ($listExit -eq 0) {
+              $distros = @(
+                $distrosOutput |
+                ForEach-Object { "$_".Trim() } |
+                Where-Object { $_ }
+              )
+
+              if ($distros -contains "Ubuntu") {
+                $found = $true
+                Write-Host "Ubuntu registered."
+                break
+              }
             }
 
             Write-Host "Ubuntu not registered yet. Waiting ($i/$maxAttempts)..."
@@ -85,12 +110,22 @@ jobs:
 
       - name: Initialize Ubuntu
         run: |
-          wsl.exe -d Ubuntu -- bash -lc "echo 'Ubuntu ready'; uname -a; whoami; pwd"
+          & wsl.exe -d Ubuntu -- bash -lc "echo 'Ubuntu ready'; uname -a; whoami; pwd"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Ubuntu failed to initialize."
+          }
 
-      - name: Show final WSL status
+      - name: Show final WSL state
         run: |
-          wsl.exe --status
-          wsl.exe --list --verbose
+          & wsl.exe --status
+          if ($LASTEXITCODE -ne 0) {
+            throw "wsl --status failed after installation."
+          }
+
+          & wsl.exe --list --verbose
+          if ($LASTEXITCODE -ne 0) {
+            throw "wsl --list --verbose failed after installation."
+          }
 
       - name: Run installer smoke flow
         run: |
