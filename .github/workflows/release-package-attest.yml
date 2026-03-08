@@ -23,7 +23,7 @@ jobs:
           zip -r wsl-dev-pack-release.zip . -x "*.git*" "*/.git/*"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wsl-dev-pack-release
           path: wsl-dev-pack-release.zip
