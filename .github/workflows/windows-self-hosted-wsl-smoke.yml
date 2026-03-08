@@ -9,25 +9,32 @@ on:
 
 jobs:
   smoke:
-    runs-on: [self-hosted, windows, wsl]
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show WSL status
-        shell: powershell
+      - name: Detect WSL availability
         run: |
-          wsl --status
-          wsl -l -v
+          $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+          if (-not $wsl) {
+            throw "wsl.exe is not available on this runner."
+          }
 
-      - name: Run installer smoke flow
-        shell: powershell
-        run: |
-          Write-Host "Adjust this step to fit your preferred unattended smoke strategy."
-          Write-Host "For example, call setup-wsl-dev.ps1 with pre-seeded state in a dedicated test environment."
+          wsl.exe --status
+          $distros = @(wsl.exe --list --quiet | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          if ($distros.Count -eq 0) {
+            throw "WSL is present, but no distributions are installed."
+          }
 
-      - name: Post-install smoke verification
-        shell: powershell
+          Write-Host "Installed distros:"
+          $distros | ForEach-Object { Write-Host " - $_" }
+
+      - name: Run smoke verification script
         run: |
-          .\scripts\Invoke-WSLSmoke.ps1 -Distro Ubuntu
+          .\scripts\Invoke-WSLSmoke.ps1
