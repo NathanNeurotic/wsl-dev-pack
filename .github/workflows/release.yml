@@ -5,18 +5,25 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Create ZIP
         run: |
-          zip -r wsl-dev-pack-release.zip . -x "*.git*"
+          rm -f wsl-dev-pack-release.zip
+          zip -r wsl-dev-pack-release.zip . \
+            -x ".git/*" ".github/*" "*.git*"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: wsl-dev-pack-release.zip
+          fail_on_unmatched_files: true
