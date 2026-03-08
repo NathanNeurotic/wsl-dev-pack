@@ -34,7 +34,7 @@ jobs:
 
           Write-Host "wsl.exe found at: $($wsl.Source)"
 
-      - name: Probe current WSL state
+      - name: Probe current WSL state (non-fatal)
         run: |
           Write-Host "WSL status:"
           & wsl.exe --status
@@ -42,14 +42,34 @@ jobs:
           Write-Host "wsl --status exit code: $statusExit"
 
           Write-Host ""
-          Write-Host "Current WSL distros (non-fatal if none exist yet):"
-          & wsl.exe --list --verbose
+          Write-Host "Checking installed distros (non-fatal if none exist)..."
+
+          $distrosOutput = & wsl.exe --list --quiet 2>$null
           $listExit = $LASTEXITCODE
-          Write-Host "wsl --list --verbose exit code: $listExit"
+
+          if ($listExit -ne 0) {
+            Write-Host "No installed distros detected yet."
+            $global:LASTEXITCODE = 0
+          }
+          else {
+            $distros = @(
+              $distrosOutput |
+              ForEach-Object { "$_".Trim() } |
+              Where-Object { $_ }
+            )
+
+            if ($distros.Count -eq 0) {
+              Write-Host "No installed distros detected yet."
+            }
+            else {
+              Write-Host "Installed distros:"
+              $distros | ForEach-Object { Write-Host " - $_" }
+            }
+          }
 
       - name: Install Ubuntu if missing
         run: |
-          $distrosOutput = & wsl.exe --list --quiet 2>&1
+          $distrosOutput = & wsl.exe --list --quiet 2>$null
           $listExit = $LASTEXITCODE
 
           $distros = @()
@@ -65,14 +85,19 @@ jobs:
             Write-Host "Ubuntu already installed."
           }
           else {
-            Write-Host "Ubuntu not found. Listing online distros..."
-            & wsl.exe --list --online
+            Write-Host "Ubuntu not found."
 
+            Write-Host ""
+            Write-Host "Available distros:"
+            & wsl.exe --list --online
+            $global:LASTEXITCODE = 0
+
+            Write-Host ""
             Write-Host "Installing Ubuntu..."
             & wsl.exe --install Ubuntu
 
             if ($LASTEXITCODE -ne 0) {
-              throw "Failed to install Ubuntu with wsl.exe --install Ubuntu"
+              throw "Failed to install Ubuntu."
             }
           }
 
@@ -83,7 +108,7 @@ jobs:
           $found = $false
 
           for ($i = 1; $i -le $maxAttempts; $i++) {
-            $distrosOutput = & wsl.exe --list --quiet 2>&1
+            $distrosOutput = & wsl.exe --list --quiet 2>$null
             $listExit = $LASTEXITCODE
 
             if ($listExit -eq 0) {
