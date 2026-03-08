@@ -1,0 +1,107 @@
+name: Windows WSL Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show runner info
+        run: |
+          Write-Host "Runner OS: $env:RUNNER_OS"
+          Write-Host "Workspace: $env:GITHUB_WORKSPACE"
+          $PSVersionTable
+
+      - name: Ensure wsl.exe is present
+        run: |
+          $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+          if (-not $wsl) {
+            throw "wsl.exe is not available on this runner."
+          }
+
+          Write-Host "wsl.exe found at: $($wsl.Source)"
+          wsl.exe --status
+
+      - name: List current WSL distros
+        run: |
+          Write-Host "Current WSL distros (if any):"
+          wsl.exe --list --verbose
+
+      - name: Install Ubuntu if missing
+        run: |
+          $distros = @(
+            wsl.exe --list --quiet 2>$null |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ }
+          )
+
+          if ($distros -contains "Ubuntu") {
+            Write-Host "Ubuntu already installed."
+          }
+          else {
+            Write-Host "Ubuntu not found. Attempting install..."
+            wsl.exe --install -d Ubuntu
+          }
+
+      - name: Wait for Ubuntu registration
+        run: |
+          $maxAttempts = 24
+          $sleepSeconds = 5
+          $found = $false
+
+          for ($i = 1; $i -le $maxAttempts; $i++) {
+            $distros = @(
+              wsl.exe --list --quiet 2>$null |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ }
+            )
+
+            if ($distros -contains "Ubuntu") {
+              $found = $true
+              Write-Host "Ubuntu registered."
+              break
+            }
+
+            Write-Host "Ubuntu not registered yet. Waiting ($i/$maxAttempts)..."
+            Start-Sleep -Seconds $sleepSeconds
+          }
+
+          if (-not $found) {
+            throw "Ubuntu distro was not registered in time."
+          }
+
+      - name: Initialize Ubuntu
+        run: |
+          wsl.exe -d Ubuntu -- bash -lc "echo 'Ubuntu ready'; uname -a; whoami; pwd"
+
+      - name: Show final WSL status
+        run: |
+          wsl.exe --status
+          wsl.exe --list --verbose
+
+      - name: Run installer smoke flow
+        run: |
+          Write-Host "Replace this placeholder with your unattended installer flow when ready."
+          Write-Host "Example:"
+          Write-Host ".\setup-wsl-dev.ps1 -NonInteractive"
+
+      - name: Post-install smoke verification
+        run: |
+          if (-not (Test-Path ".\scripts\Invoke-WSLSmoke.ps1")) {
+            throw "Missing script: .\scripts\Invoke-WSLSmoke.ps1"
+          }
+
+          .\scripts\Invoke-WSLSmoke.ps1 -Distro Ubuntu
