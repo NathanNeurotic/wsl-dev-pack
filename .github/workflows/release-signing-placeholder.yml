@@ -1,0 +1,19 @@
+name: Release Signing Placeholder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  signing-placeholder:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Placeholder
+        shell: powershell
+        run: |
+          Write-Host "This workflow is intentionally a placeholder."
+          Write-Host "Replace this step with your real signing integration."
+          Write-Host "Examples include Azure Trusted Signing or certificate-based SignTool usage."

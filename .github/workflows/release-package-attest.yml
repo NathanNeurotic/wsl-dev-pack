@@ -1,0 +1,39 @@
+name: Release Package and Attest
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release ZIP
+        run: |
+          zip -r wsl-dev-pack-release.zip . -x "*.git*" "*/.git/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl-dev-pack-release
+          path: wsl-dev-pack-release.zip
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: wsl-dev-pack-release.zip
+
+      - name: Publish GitHub release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wsl-dev-pack-release.zip

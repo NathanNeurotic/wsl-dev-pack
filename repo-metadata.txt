@@ -1,0 +1,5 @@
+Repository Title:
+WSL Dev Pack
+
+Repository Description:
+Portable Windows installer that bootstraps a complete WSL developer environment with Git, SSH, GitHub CLI, Docker integration checks, devcontainer scaffolding, and optional repository setup.

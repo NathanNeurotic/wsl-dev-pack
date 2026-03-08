@@ -1,0 +1,33 @@
+name: Windows WSL Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, windows, wsl]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show WSL status
+        shell: powershell
+        run: |
+          wsl --status
+          wsl -l -v
+
+      - name: Run installer smoke flow
+        shell: powershell
+        run: |
+          Write-Host "Adjust this step to fit your preferred unattended smoke strategy."
+          Write-Host "For example, call setup-wsl-dev.ps1 with pre-seeded state in a dedicated test environment."
+
+      - name: Post-install smoke verification
+        shell: powershell
+        run: |
+          .\scripts\Invoke-WSLSmoke.ps1 -Distro Ubuntu

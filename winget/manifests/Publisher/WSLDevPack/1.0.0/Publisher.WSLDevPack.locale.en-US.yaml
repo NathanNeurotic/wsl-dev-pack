@@ -1,0 +1,8 @@
+PackageIdentifier: Publisher.WSLDevPack
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: Publisher
+PackageName: WSL Dev Pack
+ShortDescription: Portable Windows installer that bootstraps a WSL developer environment.
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
