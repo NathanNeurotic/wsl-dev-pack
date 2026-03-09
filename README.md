@@ -1,5 +1,6 @@
-# WSL Dev Pack
+<img width="1536" height="1024" alt="ChatGPT Image Mar 9, 2026, 11_43_38 AM (1)" src="https://github.com/user-attachments/assets/026aa135-3cbc-4acf-8fb0-19ae1d4719fd" />
 
+# WSL Dev Pack
 A portable installer pack that bootstraps a complete Windows WSL development environment from almost any starting point.
 
 It can install or repair a developer setup automatically, including Git, SSH, GitHub CLI, terminal tooling, Docker Desktop integration checks, and optional repository scaffolding.
