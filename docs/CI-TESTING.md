@@ -1,40 +1,37 @@
 # CI and Testing Strategy
 
-This kit adds production-oriented CI scaffolding for WSL Dev Pack.
+This repo keeps CI lightweight and keeps Windows install validation as a manual release gate.
 
-## Important limitation
+## Why Windows smoke is manual
 
-A true WSL2 end-to-end smoke test is best run on a **self-hosted Windows runner** with:
+The installer is designed for a real Windows session with:
 
-- virtualization enabled
-- administrator rights
-- reboot tolerance
-- permission to run WSL and Docker Desktop
+- administrator/UAC approval
+- optional reboot and same-user sign-in
+- WSL install and distro first boot
+- optional interactive GitHub authentication
+- access to Docker Desktop if those checks are enabled
 
-The included WSL smoke workflow is therefore configured for a **self-hosted Windows runner label**, not a GitHub-hosted runner.
+Those requirements make hosted CI a poor fit, so this repo does not include an always-on GitHub Actions WSL smoke workflow.
 
 ## Included workflows
 
-### `windows-self-hosted-wsl-smoke.yml`
-Runs the installer in a controlled Windows environment and performs post-install verification.
-
-Recommended runner labels:
-
-- `self-hosted`
-- `windows`
-- `wsl`
+### `lint.yml`
+Runs shell linting on pull requests.
 
 ### `release-package-attest.yml`
-Builds a release ZIP and generates GitHub artifact attestations.
+Builds the release ZIP, generates GitHub artifact attestations, and publishes the release asset when a `v*` tag is pushed.
 
 ### `release-signing-placeholder.yml`
 Scaffold for Windows signing integration. It is intentionally a placeholder because real signing depends on your certificate or signing provider.
 
-## Suggested strategy
+## Manual Windows validation
 
-Use a layered approach:
+Before pushing a release tag:
 
-1. Lint on pull requests
-2. Package and attest on tags
-3. Run full WSL smoke tests on a self-hosted Windows runner
-4. Sign release artifacts only after build validation passes
+1. Validate the installer on at least one clean Windows environment.
+2. Validate the installer on at least one already-configured WSL environment.
+3. Run `scripts/Invoke-WSLSmoke.ps1 -Distro Ubuntu` after install.
+4. Confirm the release ZIP contains the expected files.
+
+If you later operate a trusted Windows environment and want automated smoke coverage, add a separate private workflow that you control and maintain.

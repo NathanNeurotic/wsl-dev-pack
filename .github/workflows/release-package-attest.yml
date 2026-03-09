@@ -20,7 +20,9 @@ jobs:
 
       - name: Build release ZIP
         run: |
-          zip -r wsl-dev-pack-release.zip . -x "*.git*" "*/.git/*"
+          rm -f wsl-dev-pack-release.zip
+          zip -r wsl-dev-pack-release.zip . \
+            -x ".git/*" ".github/*" "dist/*" "*.git*" "wsl-dev-pack-release.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
