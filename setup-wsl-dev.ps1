@@ -117,6 +117,20 @@ function Get-DistroList {
     return @($out -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
+function Invoke-WslBashChecked {
+    param(
+        [string]$Distro,
+        [string]$User,
+        [string]$Command,
+        [string]$FailureMessage
+    )
+
+    & $WslExe -d $Distro -u $User -- bash -lc $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw $FailureMessage
+    }
+}
+
 function Test-DistroExists {
     param([string]$Distro)
     return (Get-DistroList) -contains $Distro
@@ -653,7 +667,17 @@ echo "=== LINUX PROVISION COMPLETE ==="
     if ($State.RunGhLogin) {
         Write-Host ""
         Write-Host "=== GitHub login ==="
-        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "gh auth login"
+        Write-Host "If GitHub CLI cannot launch a browser from WSL, complete the displayed URL manually and return to this terminal."
+        Invoke-WslBashChecked `
+            -Distro $State.Distro `
+            -User $State.LinuxUser `
+            -Command "gh auth login --git-protocol ssh --skip-ssh-key --scopes write:public_key,read:public_key" `
+            -FailureMessage "GitHub CLI login failed or was canceled."
+        Invoke-WslBashChecked `
+            -Distro $State.Distro `
+            -User $State.LinuxUser `
+            -Command "gh auth status >/dev/null" `
+            -FailureMessage "GitHub CLI login completed, but auth status verification failed."
     }
 
     if ($State.UploadGitHubSSHKey -and $State.SetupSSH) {
@@ -676,7 +700,11 @@ fi
             "__WSLDEVPACK_GITHUB_KEY_TITLE__",
             (ConvertTo-BashSingleQuotedLiteral $State.GitHubSSHKeyTitle)
         )
-        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc $cmd
+        Invoke-WslBashChecked `
+            -Distro $State.Distro `
+            -User $State.LinuxUser `
+            -Command $cmd `
+            -FailureMessage "GitHub SSH key upload failed. Re-run 'gh auth status' inside WSL and confirm the login has write:public_key scope."
     }
 
     Write-Host ""
