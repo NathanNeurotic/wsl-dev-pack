@@ -671,7 +671,7 @@ echo "=== LINUX PROVISION COMPLETE ==="
         Invoke-WslBashChecked `
             -Distro $State.Distro `
             -User $State.LinuxUser `
-            -Command "gh auth login --git-protocol ssh --skip-ssh-key --scopes write:public_key,read:public_key" `
+            -Command "gh auth login --git-protocol ssh --scopes write:public_key,read:public_key" `
             -FailureMessage "GitHub CLI login failed or was canceled."
         Invoke-WslBashChecked `
             -Distro $State.Distro `

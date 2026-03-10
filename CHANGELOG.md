@@ -4,7 +4,7 @@
 - Fixed the Windows launcher so it self-elevates before creating `C:\ProgramData\WSLDevPack` directories or transcript logs
 - Standardized installer relaunches and `RunOnce` resume registration on the PowerShell `-Resume` switch
 - Kept launcher failures visible in both `setup-wsl-dev.ps1` and `setup-wsl-dev.bat` instead of closing immediately
-- Requested the GitHub CLI public-key scopes needed for automatic SSH key upload and skipped gh's duplicate SSH-key prompt
+- Requested the GitHub CLI public-key scopes needed for automatic SSH key upload
 - Expanded the manual Windows release gate to include Explorer launch, visible failure handling, and resume-path validation
 
 ## v2.0.0
