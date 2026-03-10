@@ -107,7 +107,7 @@ Users must complete these prerequisites themselves before running the installer:
 
 1. Download the latest release ZIP.
 2. Extract the archive.
-3. Double-click `setup-wsl-dev.bat`.
+3. Double-click `setup-wsl-dev.bat` (supported entrypoint).
 4. Follow the prompts.
 
 ## Typical workflow
@@ -156,10 +156,11 @@ The installer includes:
 
 - confirmation prompts
 - backups where practical
-- transcript logging
+- transcript logging after elevation succeeds
 - non-destructive repo scaffolding
+- visible launcher failures instead of an instant close
 
-Logs are stored in:
+Logs are stored in the following location after elevation succeeds:
 
 ```text
 C:\ProgramData\WSLDevPack\logs

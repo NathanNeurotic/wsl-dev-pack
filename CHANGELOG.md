@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.1
+- Fixed the Windows launcher so it self-elevates before creating `C:\ProgramData\WSLDevPack` directories or transcript logs
+- Standardized installer relaunches and `RunOnce` resume registration on the PowerShell `-Resume` switch
+- Kept launcher failures visible in both `setup-wsl-dev.ps1` and `setup-wsl-dev.bat` instead of closing immediately
+- Expanded the manual Windows release gate to include Explorer launch, visible failure handling, and resume-path validation
+
 ## v2.0.0
 - Added optional Docker Desktop / WSL integration checks
 - Added optional generic devcontainer scaffolding

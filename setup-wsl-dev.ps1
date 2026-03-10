@@ -16,6 +16,7 @@ $RunOnceName  = "WSLDevPackResume"
 $WslExe       = Join-Path $env:SystemRoot "System32\wsl.exe"
 $Timestamp    = Get-Date -Format "yyyyMMdd-HHmmss"
 $Transcript   = Join-Path $LogsDir "setup-$Timestamp.log"
+$TranscriptStarted = $false
 
 function Ensure-Dir {
     param([string]$Path)
@@ -69,7 +70,7 @@ function Test-IsAdmin {
 function Ensure-Elevated {
     if (Test-IsAdmin) { return }
     $argList = @("-NoProfile","-ExecutionPolicy","Bypass","-File","`"$ScriptPath`"")
-    if ($Resume) { $argList += "--resume" }
+    if ($Resume) { $argList += "-Resume" }
     Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList
     exit 0
 }
@@ -87,7 +88,7 @@ function Load-State {
 }
 
 function Register-Resume {
-    $cmd = "cmd.exe /c `"$LauncherBat`" --resume"
+    $cmd = "cmd.exe /c `"$LauncherBat`" -Resume"
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v $RunOnceName /t REG_SZ /d $cmd /f | Out-Null
 }
 
@@ -144,13 +145,13 @@ function Pause-And-ExitForReboot {
     exit 0
 }
 
-Ensure-Dir $StateDir
-Ensure-Dir $WorkDir
-Ensure-Dir $LogsDir
-Start-Transcript -Path $Transcript -Append | Out-Null
-
 try {
     Ensure-Elevated
+    Ensure-Dir $StateDir
+    Ensure-Dir $WorkDir
+    Ensure-Dir $LogsDir
+    Start-Transcript -Path $Transcript -Append | Out-Null
+    $TranscriptStarted = $true
 
     if ($Resume) {
         $stateObj = Load-State
@@ -667,6 +668,28 @@ fi
 
     Clear-Resume
 }
+catch {
+    $message = $_.Exception.Message
+
+    Write-Host ""
+    Write-Host "=== Setup failed ===" -ForegroundColor Red
+    if (-not [string]::IsNullOrWhiteSpace($message)) {
+        Write-Host $message -ForegroundColor Red
+    }
+    if ($TranscriptStarted) {
+        Write-Host "Log: $Transcript" -ForegroundColor Yellow
+    }
+
+    if ([Environment]::UserInteractive) {
+        try {
+            [void](Read-Host "Press Enter to exit")
+        } catch {}
+    }
+
+    exit 1
+}
 finally {
-    try { Stop-Transcript | Out-Null } catch {}
+    if ($TranscriptStarted) {
+        try { Stop-Transcript | Out-Null } catch {}
+    }
 }

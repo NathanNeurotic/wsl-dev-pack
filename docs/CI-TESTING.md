@@ -29,9 +29,11 @@ Scaffold for Windows signing integration. It is intentionally a placeholder beca
 
 Before pushing a release tag:
 
-1. Validate the installer on at least one clean Windows environment.
+1. Validate the installer on at least one clean Windows environment by double-clicking `setup-wsl-dev.bat` from Explorer as a standard user. Confirm the UAC prompt appears before any crash and the installer reaches the prerequisite prompt.
 2. Validate the installer on at least one already-configured WSL environment.
-3. Run `scripts/Invoke-WSLSmoke.ps1 -Distro Ubuntu` after install.
-4. Confirm the release ZIP contains the expected files.
+3. Trigger one visible failure case, such as declining the prerequisite confirmation, and confirm the terminal stays open long enough to read the error.
+4. Exercise the resume path and confirm relaunches use `-Resume` and complete successfully after the required reboot/sign-in step.
+5. Run `scripts/Invoke-WSLSmoke.ps1 -Distro Ubuntu` after install.
+6. Confirm the release ZIP contains the expected files.
 
 If you later operate a trusted Windows environment and want automated smoke coverage, add a separate private workflow that you control and maintain.

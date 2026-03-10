@@ -19,6 +19,7 @@ The user must do these themselves before continuing:
 - Prompt for user-only variables
 - Confirm prerequisites before continuing
 - Self-elevate
+- Start transcript logging only after elevation succeeds
 - Write `%USERPROFILE%\.wslconfig`
 - Install WSL and the selected distro if missing
 - Resume automatically after reboot through `RunOnce`
@@ -39,7 +40,8 @@ The user must do these themselves before continuing:
   - scaffold a generic `.vscode/extensions.json`
   - perform Docker Desktop / WSL integration checks
 - Create backups where practical
-- Write logs under `C:\ProgramData\WSLDevPack\logs`
+- Keep launcher failures visible instead of closing immediately
+- Write logs under `C:\ProgramData\WSLDevPack\logs` after elevation succeeds
 
 ## Included files
 
@@ -54,7 +56,9 @@ The user must do these themselves before continuing:
 
 1. Extract the ZIP.
 2. Read this file.
-3. Double-click `setup-wsl-dev.bat`.
+3. Double-click `setup-wsl-dev.bat` (supported entrypoint).
 4. Answer the prompts carefully.
 5. Reboot if the script tells you to.
 6. If interactive GitHub auth is enabled, complete the browser/device flow.
+
+If setup fails, the launcher keeps the terminal open so you can read the error. If logging started successfully, the script also prints the log path.
