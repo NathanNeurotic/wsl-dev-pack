@@ -29,6 +29,13 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Content, $enc)
 }
 
+function ConvertTo-BashSingleQuotedLiteral {
+    param([AllowNull()][string]$Value)
+    if ($null -eq $Value) { return "''" }
+    $escapedSingleQuote = "'" + '"' + "'" + '"' + "'"
+    return "'" + $Value.Replace("'", $escapedSingleQuote) + "'"
+}
+
 function Ask-Default {
     param([string]$Prompt, [string]$Default)
     $v = Read-Host "$Prompt [$Default]"
@@ -426,25 +433,25 @@ appendWindowsPath = false
     $setupSSHFlag  = if ($State.SetupSSH) { "1" } else { "0" }
     $nopassFlag    = if ($State.NopasswdSudo) { "1" } else { "0" }
 
-    $provisionContent = @"
+    $provisionContent = @'
 #!/usr/bin/env bash
 set -euo pipefail
 
-LINUX_USER='$($State.LinuxUser.Replace("'","'\"'\"'"))'
-GIT_NAME='$($State.GitName.Replace("'","'\"'\"'"))'
-GIT_EMAIL='$($State.GitEmail.Replace("'","'\"'\"'"))'
-REPO_ROOT='$($State.RepoRoot.Replace("'","'\"'\"'"))'
-SETUP_SSH='$setupSSHFlag'
-NOPASSWD_SUDO='$nopassFlag'
-CLONE_REPO='$cloneRepoFlag'
-REPO_URL='$($State.RepoUrl.Replace("'","'\"'\"'"))'
-REPO_DEST='$($State.RepoDest.Replace("'","'\"'\"'"))'
-BOOTSTRAP_REPO='$bootstrapFlag'
-BOOTSTRAP_REPO_PATH='$($State.ExistingRepoPath.Replace("'","'\"'\"'"))'
-CREATE_DEVCONTAINER='$createDevFlag'
-CREATE_VSCODE_EXT='$createVSCFlag'
-BASHRC_SRC='$bashrcPathWsl'
-WSLCONF_SRC='$wslConfPathWsl'
+LINUX_USER=__WSLDEVPACK_LINUX_USER__
+GIT_NAME=__WSLDEVPACK_GIT_NAME__
+GIT_EMAIL=__WSLDEVPACK_GIT_EMAIL__
+REPO_ROOT=__WSLDEVPACK_REPO_ROOT__
+SETUP_SSH=__WSLDEVPACK_SETUP_SSH__
+NOPASSWD_SUDO=__WSLDEVPACK_NOPASSWD_SUDO__
+CLONE_REPO=__WSLDEVPACK_CLONE_REPO__
+REPO_URL=__WSLDEVPACK_REPO_URL__
+REPO_DEST=__WSLDEVPACK_REPO_DEST__
+BOOTSTRAP_REPO=__WSLDEVPACK_BOOTSTRAP_REPO__
+BOOTSTRAP_REPO_PATH=__WSLDEVPACK_BOOTSTRAP_REPO_PATH__
+CREATE_DEVCONTAINER=__WSLDEVPACK_CREATE_DEVCONTAINER__
+CREATE_VSCODE_EXT=__WSLDEVPACK_CREATE_VSCODE_EXT__
+BASHRC_SRC=__WSLDEVPACK_BASHRC_SRC__
+WSLCONF_SRC=__WSLDEVPACK_WSLCONF_SRC__
 
 backup_if_exists() {
     local path="$1"
@@ -576,7 +583,28 @@ EOF_POST
 fi
 
 echo "=== LINUX PROVISION COMPLETE ==="
-"@
+'@
+
+    $provisionTokens = [ordered]@{
+        "__WSLDEVPACK_LINUX_USER__"          = ConvertTo-BashSingleQuotedLiteral $State.LinuxUser
+        "__WSLDEVPACK_GIT_NAME__"            = ConvertTo-BashSingleQuotedLiteral $State.GitName
+        "__WSLDEVPACK_GIT_EMAIL__"           = ConvertTo-BashSingleQuotedLiteral $State.GitEmail
+        "__WSLDEVPACK_REPO_ROOT__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoRoot
+        "__WSLDEVPACK_SETUP_SSH__"           = ConvertTo-BashSingleQuotedLiteral $setupSSHFlag
+        "__WSLDEVPACK_NOPASSWD_SUDO__"       = ConvertTo-BashSingleQuotedLiteral $nopassFlag
+        "__WSLDEVPACK_CLONE_REPO__"          = ConvertTo-BashSingleQuotedLiteral $cloneRepoFlag
+        "__WSLDEVPACK_REPO_URL__"            = ConvertTo-BashSingleQuotedLiteral $State.RepoUrl
+        "__WSLDEVPACK_REPO_DEST__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoDest
+        "__WSLDEVPACK_BOOTSTRAP_REPO__"      = ConvertTo-BashSingleQuotedLiteral $bootstrapFlag
+        "__WSLDEVPACK_BOOTSTRAP_REPO_PATH__" = ConvertTo-BashSingleQuotedLiteral $State.ExistingRepoPath
+        "__WSLDEVPACK_CREATE_DEVCONTAINER__" = ConvertTo-BashSingleQuotedLiteral $createDevFlag
+        "__WSLDEVPACK_CREATE_VSCODE_EXT__"   = ConvertTo-BashSingleQuotedLiteral $createVSCFlag
+        "__WSLDEVPACK_BASHRC_SRC__"          = ConvertTo-BashSingleQuotedLiteral $bashrcPathWsl
+        "__WSLDEVPACK_WSLCONF_SRC__"         = ConvertTo-BashSingleQuotedLiteral $wslConfPathWsl
+    }
+    foreach ($token in $provisionTokens.Keys) {
+        $provisionContent = $provisionContent.Replace($token, $provisionTokens[$token])
+    }
 
     Write-Utf8NoBom -Path $provisionPathWin -Content $provisionContent
     $provisionPathWsl = WinPath-To-WslPath $provisionPathWin
@@ -631,20 +659,23 @@ echo "=== LINUX PROVISION COMPLETE ==="
     if ($State.UploadGitHubSSHKey -and $State.SetupSSH) {
         Write-Host ""
         Write-Host "=== GitHub SSH key upload ==="
-        $titleEsc = $State.GitHubSSHKeyTitle.Replace("'", "'\"'\"'")
-        $cmd = @"
+        $cmd = @'
 PUB=~/.ssh/id_ed25519.pub
-if [ -f "\$PUB" ]; then
-  KEY_CONTENT=\$(cat "\$PUB")
-  if gh api user/keys --jq '.[].key' 2>/dev/null | grep -Fxq "\$KEY_CONTENT"; then
+if [ -f "$PUB" ]; then
+  KEY_CONTENT=$(cat "$PUB")
+  if gh api user/keys --jq '.[].key' 2>/dev/null | grep -Fxq "$KEY_CONTENT"; then
     echo 'SSH public key already exists on GitHub.'
   else
-    gh ssh-key add "\$PUB" --title '$titleEsc' --type authentication
+    gh ssh-key add "$PUB" --title __WSLDEVPACK_GITHUB_KEY_TITLE__ --type authentication
   fi
 else
   echo 'No public SSH key file was found for upload.'
 fi
-"@
+'@
+        $cmd = $cmd.Replace(
+            "__WSLDEVPACK_GITHUB_KEY_TITLE__",
+            (ConvertTo-BashSingleQuotedLiteral $State.GitHubSSHKeyTitle)
+        )
         & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc $cmd
     }
 
