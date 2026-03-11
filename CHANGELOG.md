@@ -1,6 +1,7 @@
 # Changelog
 
 ## v2.0.1
+- Made the tag-driven release workflow create a named GitHub release with generated notes and a versioned ZIP asset
 - Added Ubuntu-side PowerShell installation during Linux provisioning
 - Moved optional repo cloning and scaffolding to run after GitHub auth so private SSH clones do not fail before credentials are set up
 - Explicitly install `openssh-client` and `sudo` because later SSH and `sudo -u` steps depend on them
