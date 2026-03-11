@@ -4,45 +4,73 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to create or update, for example v2.0.1
+        required: true
+        type: string
 
 permissions:
   contents: write
   id-token: write
   attestations: write
 
-env:
-  RELEASE_ZIP: wsl-dev-pack-${{ github.ref_name }}.zip
-
 jobs:
   package:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag='${{ inputs.release_tag }}'
+          else
+            tag='${{ github.ref_name }}'
+          fi
+
+          case "$tag" in
+            v*) ;;
+            *)
+              echo "Release tag must start with 'v'."
+              exit 1
+              ;;
+          esac
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "zip=wsl-dev-pack-$tag.zip" >> "$GITHUB_OUTPUT"
+          echo "release_name=WSL Dev Pack $tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Build release ZIP
         run: |
-          rm -f "$RELEASE_ZIP"
-          zip -r "$RELEASE_ZIP" . \
-            -x ".git/*" ".github/*" "dist/*" "*.git*" "$RELEASE_ZIP"
+          rm -f "${{ steps.meta.outputs.zip }}"
+          zip -r "${{ steps.meta.outputs.zip }}" . \
+            -x ".git/*" ".github/*" "dist/*" "*.git*" "${{ steps.meta.outputs.zip }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.ref_name }}
-          path: ${{ env.RELEASE_ZIP }}
+          name: ${{ steps.meta.outputs.tag }}
+          path: ${{ steps.meta.outputs.zip }}
           if-no-files-found: error
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: ${{ env.RELEASE_ZIP }}
+          subject-path: ${{ steps.meta.outputs.zip }}
 
       - name: Publish GitHub release asset
         uses: softprops/action-gh-release@v2
         with:
-          name: WSL Dev Pack ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
-          files: ${{ env.RELEASE_ZIP }}
+          name: ${{ steps.meta.outputs.release_name }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.meta.outputs.zip }}
           generate_release_notes: true

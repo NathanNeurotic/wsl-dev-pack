@@ -10,7 +10,7 @@
 6. Trigger one intentional failure, such as answering `No` to the prerequisite confirmation, and confirm the terminal stays open long enough to read the error.
 7. Exercise the reboot/resume path and confirm relaunches use `-Resume`.
 8. Run `powershell -ExecutionPolicy Bypass -File .\scripts\Invoke-WSLSmoke.ps1 -Distro Ubuntu` on the validation machine after install.
-9. Push a release tag matching `v*` to trigger `.github/workflows/release-package-attest.yml`.
+9. Push a release tag matching `v*`, or run `.github/workflows/release-package-attest.yml` manually from the Actions tab with a `release_tag` input after the workflow is present on the default branch.
 10. Confirm the generated GitHub release contains the expected ZIP contents and attestation.
 11. Paste the release notes template below.
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## v2.0.1
+- Added manual `workflow_dispatch` support to the release workflow so it can be run from the Actions tab with a `release_tag`
 - Made the tag-driven release workflow create a named GitHub release with generated notes and a versioned ZIP asset
 - Added Ubuntu-side PowerShell installation during Linux provisioning
 - Moved optional repo cloning and scaffolding to run after GitHub auth so private SSH clones do not fail before credentials are set up
