@@ -29,6 +29,7 @@ The user must do these themselves before continuing:
   - Git defaults
   - SSH config + SSH key generation
   - GitHub CLI
+  - PowerShell (`pwsh`) on Ubuntu
   - `zoxide`
   - common CLI tools
   - `fs.inotify.max_user_watches=524288`

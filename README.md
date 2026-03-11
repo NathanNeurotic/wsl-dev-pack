@@ -22,6 +22,7 @@ Installs common developer tools, including:
 - curl
 - wget
 - gh (GitHub CLI)
+- PowerShell (`pwsh`) on Ubuntu
 - python3 / pip
 - ripgrep
 - fd-find

@@ -222,9 +222,13 @@ try {
         $State.RepoRoot               = Ask-Default "Default repo root inside WSL" "/home/$($State.LinuxUser)/Github"
         $State.SetupSSH               = Ask-YesNo "Generate SSH key if missing?" $true
         $State.RunGhLogin             = Ask-YesNo "Run 'gh auth login' at the end?" $true
-        $State.UploadGitHubSSHKey     = Ask-YesNo "Upload the SSH public key to GitHub automatically after login?" $true
-        if ($State.UploadGitHubSSHKey) {
-            $State.GitHubSSHKeyTitle = Ask-Default "GitHub SSH key title" "$env:COMPUTERNAME WSL"
+        $State.UploadGitHubSSHKey     = $false
+        $State.GitHubSSHKeyTitle      = ""
+        if ($State.RunGhLogin) {
+            $State.UploadGitHubSSHKey = Ask-YesNo "Upload the SSH public key to GitHub automatically after login?" $true
+            if ($State.UploadGitHubSSHKey) {
+                $State.GitHubSSHKeyTitle = Ask-Default "GitHub SSH key title" "$env:COMPUTERNAME WSL"
+            }
         }
         $State.NopasswdSudo           = Ask-YesNo "Grant passwordless sudo to the Linux user?" $true
         $State.CheckDockerDesktop     = Ask-YesNo "Perform Docker Desktop / WSL integration checks?" $true
@@ -251,6 +255,11 @@ try {
         }
 
         Save-State $State
+    }
+
+    if (-not $State.RunGhLogin) {
+        $State.UploadGitHubSSHKey = $false
+        $State.GitHubSSHKeyTitle = ""
     }
 
     Write-Host ""
@@ -479,7 +488,41 @@ apt-get upgrade -y
 
 apt-get install -y \
   build-essential git curl wget ca-certificates pkg-config unzip zip python3 python3-pip \
+  sudo openssh-client \
   software-properties-common ripgrep fd-find fzf bat tree jq htop tmux zoxide gh bash-completion
+
+if ! command -v pwsh >/dev/null 2>&1; then
+    if [ -r /etc/os-release ]; then
+        . /etc/os-release
+    fi
+
+    if [ "${ID:-}" = "ubuntu" ] && [ -n "${VERSION_ID:-}" ]; then
+        echo "Installing PowerShell..."
+        if apt-get install -y apt-transport-https software-properties-common; then
+            tmp_deb="$(mktemp)"
+            if wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" -O "$tmp_deb"; then
+                if dpkg -i "$tmp_deb"; then
+                    if apt-get update; then
+                        if ! apt-get install -y powershell; then
+                            echo "PowerShell package install failed; continuing without pwsh."
+                        fi
+                    else
+                        echo "PowerShell apt metadata refresh failed; continuing without pwsh."
+                    fi
+                else
+                    echo "PowerShell repo bootstrap failed during dpkg; continuing without pwsh."
+                fi
+            else
+                echo "PowerShell repo download failed; continuing without pwsh."
+            fi
+            rm -f "$tmp_deb"
+        else
+            echo "PowerShell prerequisite packages failed to install; continuing without pwsh."
+        fi
+    else
+        echo "Skipping PowerShell install on unsupported distro: ${ID:-unknown}"
+    fi
+fi
 
 if ! id -u "$LINUX_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$LINUX_USER"
@@ -532,13 +575,161 @@ chmod 600 "/home/$LINUX_USER/.ssh/id_ed25519" 2>/dev/null || true
 chmod 644 "/home/$LINUX_USER/.ssh/id_ed25519.pub" 2>/dev/null || true
 chown -R "$LINUX_USER:$LINUX_USER" "/home/$LINUX_USER/.ssh"
 
-if [ "$CLONE_REPO" = "1" ] && [ -n "$REPO_URL" ] && [ -n "$REPO_DEST" ] && [ ! -e "$REPO_DEST/.git" ]; then
-    mkdir -p "$(dirname "$REPO_DEST")"
-    chown -R "$LINUX_USER:$LINUX_USER" "$(dirname "$REPO_DEST")"
-    sudo -u "$LINUX_USER" git clone "$REPO_URL" "$REPO_DEST"
+echo "=== LINUX PROVISION COMPLETE ==="
+'@
+
+    $provisionTokens = [ordered]@{
+        "__WSLDEVPACK_LINUX_USER__"          = ConvertTo-BashSingleQuotedLiteral $State.LinuxUser
+        "__WSLDEVPACK_GIT_NAME__"            = ConvertTo-BashSingleQuotedLiteral $State.GitName
+        "__WSLDEVPACK_GIT_EMAIL__"           = ConvertTo-BashSingleQuotedLiteral $State.GitEmail
+        "__WSLDEVPACK_REPO_ROOT__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoRoot
+        "__WSLDEVPACK_SETUP_SSH__"           = ConvertTo-BashSingleQuotedLiteral $setupSSHFlag
+        "__WSLDEVPACK_NOPASSWD_SUDO__"       = ConvertTo-BashSingleQuotedLiteral $nopassFlag
+        "__WSLDEVPACK_CLONE_REPO__"          = ConvertTo-BashSingleQuotedLiteral $cloneRepoFlag
+        "__WSLDEVPACK_REPO_URL__"            = ConvertTo-BashSingleQuotedLiteral $State.RepoUrl
+        "__WSLDEVPACK_REPO_DEST__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoDest
+        "__WSLDEVPACK_BOOTSTRAP_REPO__"      = ConvertTo-BashSingleQuotedLiteral $bootstrapFlag
+        "__WSLDEVPACK_BOOTSTRAP_REPO_PATH__" = ConvertTo-BashSingleQuotedLiteral $State.ExistingRepoPath
+        "__WSLDEVPACK_CREATE_DEVCONTAINER__" = ConvertTo-BashSingleQuotedLiteral $createDevFlag
+        "__WSLDEVPACK_CREATE_VSCODE_EXT__"   = ConvertTo-BashSingleQuotedLiteral $createVSCFlag
+        "__WSLDEVPACK_BASHRC_SRC__"          = ConvertTo-BashSingleQuotedLiteral $bashrcPathWsl
+        "__WSLDEVPACK_WSLCONF_SRC__"         = ConvertTo-BashSingleQuotedLiteral $wslConfPathWsl
+    }
+    foreach ($token in $provisionTokens.Keys) {
+        $provisionContent = $provisionContent.Replace($token, $provisionTokens[$token])
+    }
+
+    Write-Utf8NoBom -Path $provisionPathWin -Content $provisionContent
+    $provisionPathWsl = WinPath-To-WslPath $provisionPathWin
+
+    Write-Host ""
+    Write-Host "=== Provisioning Linux side ==="
+    & $WslExe --set-default-version 2 2>$null | Out-Null
+    & $WslExe -d $State.Distro -u root -- bash $provisionPathWsl
+    if ($LASTEXITCODE -ne 0) { throw "Linux provisioning failed." }
+
+    if ($State.CreatedCloudInit -and (Test-UbuntuLike $State.Distro)) {
+        $userDataPath = Join-Path (Join-Path $env:USERPROFILE ".cloud-init") "$($State.Distro).user-data"
+        if (Test-Path $userDataPath) { Remove-Item $userDataPath -Force }
+    }
+
+    & $WslExe --shutdown
+
+    Write-Host ""
+    Write-Host "=== Verification ==="
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "systemctl is-system-running || true"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "mount | grep /mnt/c || true"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "command -v zoxide >/dev/null 2>&1 && echo 'zoxide installed: yes' || echo 'zoxide installed: no'"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "command -v pwsh >/dev/null 2>&1 && echo 'pwsh installed: yes' || echo 'pwsh installed: no'"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "command -v ssh >/dev/null 2>&1 && command -v ssh-keygen >/dev/null 2>&1 && echo 'openssh client installed: yes' || echo 'openssh client installed: no'"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "command -v sudo >/dev/null 2>&1 && echo 'sudo installed: yes' || echo 'sudo installed: no'"
+    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "git config --global --list | grep -E 'user.name|user.email|core.autocrlf|core.filemode|core.preloadindex|gc.auto|init.defaultbranch|pull.rebase' || true"
+
+    if ($State.CheckDockerDesktop) {
+        Write-Host ""
+        Write-Host "=== Docker Desktop / WSL checks ==="
+        $dockerExe = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+        if (Test-Path $dockerExe) {
+            Write-Host "Docker Desktop appears installed: $dockerExe"
+        } else {
+            Write-Host "Docker Desktop was not found in the standard Program Files path."
+        }
+
+        $dockerSettings = Join-Path $env:APPDATA "Docker\settings-store.json"
+        if (Test-Path $dockerSettings) {
+            Write-Host "Docker settings file found: $dockerSettings"
+        } else {
+            Write-Host "Docker settings-store.json not found in the default AppData path."
+        }
+
+        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "docker version >/dev/null 2>&1 && echo 'Docker CLI reachable from WSL: yes' || echo 'Docker CLI reachable from WSL: no'"
+        Write-Host "If Docker CLI is not reachable, open Docker Desktop and enable WSL integration for the target distro."
+    }
+
+    if ($State.RunGhLogin) {
+        Write-Host ""
+        Write-Host "=== GitHub login ==="
+        Write-Host "If GitHub CLI cannot launch a browser from WSL, complete the displayed URL manually and return to this terminal."
+        Invoke-WslBashChecked `
+            -Distro $State.Distro `
+            -User $State.LinuxUser `
+            -Command "gh auth login --git-protocol ssh --scopes write:public_key,read:public_key" `
+            -FailureMessage "GitHub CLI login failed or was canceled."
+        Invoke-WslBashChecked `
+            -Distro $State.Distro `
+            -User $State.LinuxUser `
+            -Command "gh auth status >/dev/null" `
+            -FailureMessage "GitHub CLI login completed, but auth status verification failed."
+    }
+
+    if ($State.UploadGitHubSSHKey) {
+        Write-Host ""
+        Write-Host "=== GitHub SSH key upload ==="
+        $uploadKeyPathWin = Join-Path $WorkDir "upload-github-ssh-key.sh"
+        $uploadKeyPathWsl = WinPath-To-WslPath $uploadKeyPathWin
+        $uploadKeyContent = @'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PUB="$HOME/.ssh/id_ed25519.pub"
+KEY_TITLE=__WSLDEVPACK_GITHUB_KEY_TITLE__
+
+if [ ! -f "$PUB" ]; then
+  echo 'No public SSH key file was found for upload.'
+  exit 1
 fi
 
-if [ "$BOOTSTRAP_REPO" = "1" ] && [ -n "$BOOTSTRAP_REPO_PATH" ] && [ -d "$BOOTSTRAP_REPO_PATH" ]; then
+KEY_CONTENT="$(cat "$PUB")"
+if [ -z "$KEY_CONTENT" ]; then
+  echo 'SSH public key file is empty.'
+  exit 1
+fi
+
+if gh api user/keys --jq '.[].key' 2>/dev/null | grep -Fxq "$KEY_CONTENT"; then
+  echo 'SSH public key already exists on GitHub.'
+else
+  gh ssh-key add "$PUB" --title "$KEY_TITLE" --type authentication
+fi
+'@
+        $uploadKeyContent = $uploadKeyContent.Replace(
+            "__WSLDEVPACK_GITHUB_KEY_TITLE__",
+            (ConvertTo-BashSingleQuotedLiteral $State.GitHubSSHKeyTitle)
+        )
+        Write-Utf8NoBom -Path $uploadKeyPathWin -Content $uploadKeyContent
+        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash $uploadKeyPathWsl
+        if ($LASTEXITCODE -ne 0) {
+            throw "GitHub SSH key upload failed. Re-run 'gh auth status' inside WSL and confirm the login has write:public_key scope."
+        }
+    }
+
+    if ($State.CloneRepo -or $State.BootstrapExistingRepo) {
+        Write-Host ""
+        Write-Host "=== Repository bootstrap ==="
+        $repoBootstrapPathWin = Join-Path $WorkDir "repo-bootstrap.sh"
+        $repoBootstrapPathWsl = WinPath-To-WslPath $repoBootstrapPathWin
+        $repoBootstrapContent = @'
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLONE_REPO=__WSLDEVPACK_CLONE_REPO__
+REPO_URL=__WSLDEVPACK_REPO_URL__
+REPO_DEST=__WSLDEVPACK_REPO_DEST__
+BOOTSTRAP_REPO=__WSLDEVPACK_BOOTSTRAP_REPO__
+BOOTSTRAP_REPO_PATH=__WSLDEVPACK_BOOTSTRAP_REPO_PATH__
+CREATE_DEVCONTAINER=__WSLDEVPACK_CREATE_DEVCONTAINER__
+CREATE_VSCODE_EXT=__WSLDEVPACK_CREATE_VSCODE_EXT__
+
+if [ "$CLONE_REPO" = "1" ] && [ -n "$REPO_URL" ] && [ -n "$REPO_DEST" ] && [ ! -e "$REPO_DEST/.git" ]; then
+    mkdir -p "$(dirname "$REPO_DEST")"
+    git clone "$REPO_URL" "$REPO_DEST"
+fi
+
+if [ "$BOOTSTRAP_REPO" = "1" ] && [ -n "$BOOTSTRAP_REPO_PATH" ]; then
+    if [ ! -d "$BOOTSTRAP_REPO_PATH" ]; then
+        echo "Repository bootstrap path does not exist: $BOOTSTRAP_REPO_PATH"
+        exit 1
+    fi
+
     mkdir -p "$BOOTSTRAP_REPO_PATH/.vscode"
     mkdir -p "$BOOTSTRAP_REPO_PATH/.devcontainer"
 
@@ -592,119 +783,28 @@ echo "Devcontainer bootstrap complete."
 EOF_POST
         chmod +x "$BOOTSTRAP_REPO_PATH/.devcontainer/post-create.sh"
     fi
-
-    chown -R "$LINUX_USER:$LINUX_USER" "$BOOTSTRAP_REPO_PATH/.vscode" "$BOOTSTRAP_REPO_PATH/.devcontainer" || true
-fi
-
-echo "=== LINUX PROVISION COMPLETE ==="
-'@
-
-    $provisionTokens = [ordered]@{
-        "__WSLDEVPACK_LINUX_USER__"          = ConvertTo-BashSingleQuotedLiteral $State.LinuxUser
-        "__WSLDEVPACK_GIT_NAME__"            = ConvertTo-BashSingleQuotedLiteral $State.GitName
-        "__WSLDEVPACK_GIT_EMAIL__"           = ConvertTo-BashSingleQuotedLiteral $State.GitEmail
-        "__WSLDEVPACK_REPO_ROOT__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoRoot
-        "__WSLDEVPACK_SETUP_SSH__"           = ConvertTo-BashSingleQuotedLiteral $setupSSHFlag
-        "__WSLDEVPACK_NOPASSWD_SUDO__"       = ConvertTo-BashSingleQuotedLiteral $nopassFlag
-        "__WSLDEVPACK_CLONE_REPO__"          = ConvertTo-BashSingleQuotedLiteral $cloneRepoFlag
-        "__WSLDEVPACK_REPO_URL__"            = ConvertTo-BashSingleQuotedLiteral $State.RepoUrl
-        "__WSLDEVPACK_REPO_DEST__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoDest
-        "__WSLDEVPACK_BOOTSTRAP_REPO__"      = ConvertTo-BashSingleQuotedLiteral $bootstrapFlag
-        "__WSLDEVPACK_BOOTSTRAP_REPO_PATH__" = ConvertTo-BashSingleQuotedLiteral $State.ExistingRepoPath
-        "__WSLDEVPACK_CREATE_DEVCONTAINER__" = ConvertTo-BashSingleQuotedLiteral $createDevFlag
-        "__WSLDEVPACK_CREATE_VSCODE_EXT__"   = ConvertTo-BashSingleQuotedLiteral $createVSCFlag
-        "__WSLDEVPACK_BASHRC_SRC__"          = ConvertTo-BashSingleQuotedLiteral $bashrcPathWsl
-        "__WSLDEVPACK_WSLCONF_SRC__"         = ConvertTo-BashSingleQuotedLiteral $wslConfPathWsl
-    }
-    foreach ($token in $provisionTokens.Keys) {
-        $provisionContent = $provisionContent.Replace($token, $provisionTokens[$token])
-    }
-
-    Write-Utf8NoBom -Path $provisionPathWin -Content $provisionContent
-    $provisionPathWsl = WinPath-To-WslPath $provisionPathWin
-
-    Write-Host ""
-    Write-Host "=== Provisioning Linux side ==="
-    & $WslExe --set-default-version 2 2>$null | Out-Null
-    & $WslExe -d $State.Distro -u root -- bash $provisionPathWsl
-    if ($LASTEXITCODE -ne 0) { throw "Linux provisioning failed." }
-
-    if ($State.CreatedCloudInit -and (Test-UbuntuLike $State.Distro)) {
-        $userDataPath = Join-Path (Join-Path $env:USERPROFILE ".cloud-init") "$($State.Distro).user-data"
-        if (Test-Path $userDataPath) { Remove-Item $userDataPath -Force }
-    }
-
-    & $WslExe --shutdown
-
-    Write-Host ""
-    Write-Host "=== Verification ==="
-    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "systemctl is-system-running || true"
-    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "mount | grep /mnt/c || true"
-    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "type z || true"
-    & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "git config --global --list | grep -E 'user.name|user.email|core.autocrlf|core.filemode|core.preloadindex|gc.auto|init.defaultbranch|pull.rebase' || true"
-
-    if ($State.CheckDockerDesktop) {
-        Write-Host ""
-        Write-Host "=== Docker Desktop / WSL checks ==="
-        $dockerExe = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
-        if (Test-Path $dockerExe) {
-            Write-Host "Docker Desktop appears installed: $dockerExe"
-        } else {
-            Write-Host "Docker Desktop was not found in the standard Program Files path."
-        }
-
-        $dockerSettings = Join-Path $env:APPDATA "Docker\settings-store.json"
-        if (Test-Path $dockerSettings) {
-            Write-Host "Docker settings file found: $dockerSettings"
-        } else {
-            Write-Host "Docker settings-store.json not found in the default AppData path."
-        }
-
-        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash -lc "docker version >/dev/null 2>&1 && echo 'Docker CLI reachable from WSL: yes' || echo 'Docker CLI reachable from WSL: no'"
-        Write-Host "If Docker CLI is not reachable, open Docker Desktop and enable WSL integration for the target distro."
-    }
-
-    if ($State.RunGhLogin) {
-        Write-Host ""
-        Write-Host "=== GitHub login ==="
-        Write-Host "If GitHub CLI cannot launch a browser from WSL, complete the displayed URL manually and return to this terminal."
-        Invoke-WslBashChecked `
-            -Distro $State.Distro `
-            -User $State.LinuxUser `
-            -Command "gh auth login --git-protocol ssh --scopes write:public_key,read:public_key" `
-            -FailureMessage "GitHub CLI login failed or was canceled."
-        Invoke-WslBashChecked `
-            -Distro $State.Distro `
-            -User $State.LinuxUser `
-            -Command "gh auth status >/dev/null" `
-            -FailureMessage "GitHub CLI login completed, but auth status verification failed."
-    }
-
-    if ($State.UploadGitHubSSHKey -and $State.SetupSSH) {
-        Write-Host ""
-        Write-Host "=== GitHub SSH key upload ==="
-        $cmd = @'
-PUB=~/.ssh/id_ed25519.pub
-if [ -f "$PUB" ]; then
-  KEY_CONTENT=$(cat "$PUB")
-  if gh api user/keys --jq '.[].key' 2>/dev/null | grep -Fxq "$KEY_CONTENT"; then
-    echo 'SSH public key already exists on GitHub.'
-  else
-    gh ssh-key add "$PUB" --title __WSLDEVPACK_GITHUB_KEY_TITLE__ --type authentication
-  fi
-else
-  echo 'No public SSH key file was found for upload.'
 fi
 '@
-        $cmd = $cmd.Replace(
-            "__WSLDEVPACK_GITHUB_KEY_TITLE__",
-            (ConvertTo-BashSingleQuotedLiteral $State.GitHubSSHKeyTitle)
-        )
-        Invoke-WslBashChecked `
-            -Distro $State.Distro `
-            -User $State.LinuxUser `
-            -Command $cmd `
-            -FailureMessage "GitHub SSH key upload failed. Re-run 'gh auth status' inside WSL and confirm the login has write:public_key scope."
+        $repoBootstrapTokens = [ordered]@{
+            "__WSLDEVPACK_CLONE_REPO__"          = ConvertTo-BashSingleQuotedLiteral $cloneRepoFlag
+            "__WSLDEVPACK_REPO_URL__"            = ConvertTo-BashSingleQuotedLiteral $State.RepoUrl
+            "__WSLDEVPACK_REPO_DEST__"           = ConvertTo-BashSingleQuotedLiteral $State.RepoDest
+            "__WSLDEVPACK_BOOTSTRAP_REPO__"      = ConvertTo-BashSingleQuotedLiteral $bootstrapFlag
+            "__WSLDEVPACK_BOOTSTRAP_REPO_PATH__" = ConvertTo-BashSingleQuotedLiteral $State.ExistingRepoPath
+            "__WSLDEVPACK_CREATE_DEVCONTAINER__" = ConvertTo-BashSingleQuotedLiteral $createDevFlag
+            "__WSLDEVPACK_CREATE_VSCODE_EXT__"   = ConvertTo-BashSingleQuotedLiteral $createVSCFlag
+        }
+        foreach ($token in $repoBootstrapTokens.Keys) {
+            $repoBootstrapContent = $repoBootstrapContent.Replace($token, $repoBootstrapTokens[$token])
+        }
+        Write-Utf8NoBom -Path $repoBootstrapPathWin -Content $repoBootstrapContent
+        & $WslExe -d $State.Distro -u $State.LinuxUser -- bash $repoBootstrapPathWsl
+        if ($LASTEXITCODE -ne 0) {
+            if ($State.CloneRepo) {
+                throw "Repository bootstrap failed. If the repository is private, confirm GitHub auth and SSH key setup completed successfully before retrying."
+            }
+            throw "Repository bootstrap failed."
+        }
     }
 
     Write-Host ""
